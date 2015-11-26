@@ -30,7 +30,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	plotDensity(parseDensity(f))
+	rs := parseDensity(f)
+	plotDensity(rs)
+	plotCreatingRateVsPods(rs)
+	plotRunningRateVsPods(rs)
 }
 
 type densityResult struct {
@@ -117,12 +120,58 @@ func plotDensity(results []densityResult) {
 		panic(err)
 	}
 
-	// Save the plot to a PNG file.
-	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density.svg"); err != nil {
+	// Save the plot to a SVG file.
+	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-all.svg"); err != nil {
 		panic(err)
 	}
 
-	fmt.Println("successfully plotted density graph to density.svg")
+	fmt.Println("successfully plotted density graph to density-all.svg")
+}
+
+func plotCreatingRateVsPods(rs []densityResult) {
+	p, err := plot.New()
+	if err != nil {
+		panic(err)
+	}
+
+	p.Title.Text = "CreatingRate"
+	p.X.Label.Text = "Number of Pods"
+	p.Y.Label.Text = "Rate"
+
+	err = plotutil.AddLinePoints(p, "CreatingRate", getCreatingRatePoints(rs))
+	if err != nil {
+		panic(err)
+	}
+
+	// Save the plot to a SVG file.
+	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-creating-rate.svg"); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("successfully plotted density graph to density-creating-rate.svg")
+}
+
+func plotRunningRateVsPods(rs []densityResult) {
+	p, err := plot.New()
+	if err != nil {
+		panic(err)
+	}
+
+	p.Title.Text = "RunningRate"
+	p.X.Label.Text = "Number of Pods"
+	p.Y.Label.Text = "Rate"
+
+	err = plotutil.AddLinePoints(p, "RunningRate", getRunningRatePoints(rs))
+	if err != nil {
+		panic(err)
+	}
+
+	// Save the plot to a SVG file.
+	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-running-rate.svg"); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("successfully plotted density graph to density-running-rate.svg")
 }
 
 func getCreatedPoints(rs []densityResult) plotter.XYs {
@@ -161,6 +210,34 @@ func getWaitingPoints(rs []densityResult) plotter.XYs {
 	for i := range rs {
 		pts[i].X = float64(rs[i].seconds)
 		pts[i].Y = float64(rs[i].waiting)
+	}
+	return pts
+}
+
+func getCreatingRatePoints(rs []densityResult) plotter.XYs {
+	pts := make(plotter.XYs, len(rs))
+	interval := 10
+
+	for i := range rs {
+		if i == 0 {
+			continue
+		}
+		pts[i].X = float64(rs[i].created)
+		pts[i].Y = float64(rs[i].created-rs[i-1].created) / float64(interval)
+	}
+	return pts
+}
+
+func getRunningRatePoints(rs []densityResult) plotter.XYs {
+	pts := make(plotter.XYs, len(rs))
+	interval := 10
+
+	for i := range rs {
+		if i == 0 {
+			continue
+		}
+		pts[i].X = float64(rs[i].running)
+		pts[i].Y = float64(rs[i].running-rs[i-1].running) / float64(interval)
 	}
 	return pts
 }
