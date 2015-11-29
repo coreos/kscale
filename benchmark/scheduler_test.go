@@ -22,15 +22,38 @@ import (
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
-func BenchmarkScheduling(b *testing.B) {
-	glog.Info("Benchmarking scheduler")
+// BenchmarkScheduling100Nodes0Pods benchmarks the scheduling rate
+// when the cluster has 100 nodes and 0 scheduled pods
+func BenchmarkScheduling100Nodes0Pods(b *testing.B) {
+	benchmarkScheduling(100, 0, b)
+}
+
+// BenchmarkScheduling100Nodes1000Pods benchmarks the scheduling rate
+// when the cluster has 100 nodes and 1000 scheduled pods
+func BenchmarkScheduling100Nodes1000Pods(b *testing.B) {
+	benchmarkScheduling(100, 1000, b)
+}
+
+// BenchmarkScheduling1000Nodes0Pods benchmarks the scheduling rate
+// when the cluster has 1000 nodes and 0 scheduled pods
+func BenchmarkScheduling1000Nodes0Pods(b *testing.B) {
+	benchmarkScheduling(1000, 0, b)
+}
+
+// BenchmarkScheduling1000Nodes10000Pods benchmarks the scheduling rate
+// when the cluster has 1000 nodes and 1000 scheduled pods
+func BenchmarkScheduling1000Nodes1000Pods(b *testing.B) {
+	benchmarkScheduling(1000, 1000, b)
+}
+
+func benchmarkScheduling(n, p int, b *testing.B) {
 	etcdStorage, err := framework.NewEtcdStorage()
 	if err != nil {
 		b.Fatalf("Couldn't create etcd storage: %v", err)
 	}
 	expEtcdStorage, err := framework.NewExtensionsEtcdStorage(nil)
 	if err != nil {
-		b.Fatalf("unexpected error: %v", err)
+		b.Fatalf("Unexpected error: %v", err)
 	}
 
 	storageDestinations := master.NewStorageDestinations()
@@ -74,6 +97,7 @@ func BenchmarkScheduling(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Couldn't create scheduler config: %v", err)
 	}
+
 	eventBroadcaster := record.NewBroadcaster()
 	schedulerConfig.Recorder = eventBroadcaster.NewRecorder(api.EventSource{Component: "scheduler"})
 	eventBroadcaster.StartRecordingToSink(c.Events(""))
@@ -81,9 +105,9 @@ func BenchmarkScheduling(b *testing.B) {
 
 	defer close(schedulerConfig.StopEverything)
 
-	makeNNodes(c, 100)
-	b.ResetTimer()
-	numPods := 100
+	// prepare N nodes with P pods.
+	makeNNodes(c, n)
+	numPods := p
 	makeNPods(c, numPods)
 	for {
 		objs := schedulerConfigFactory.ScheduledPodLister.Store.List()
@@ -93,6 +117,19 @@ func BenchmarkScheduling(b *testing.B) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+
+	// start benchmark
+	b.ResetTimer()
+	makeNPods(c, b.N)
+	for {
+		objs := schedulerConfigFactory.ScheduledPodLister.Store.List()
+		if len(objs) >= numPods+b.N {
+			glog.Infof("%v pods scheduled.\n", len(objs))
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	b.StopTimer()
 }
 
