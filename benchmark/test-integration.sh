@@ -15,6 +15,10 @@ cleanup() {
 
 trap cleanup EXIT
 
+kube::log::status "Downloading dependencies..."
+# download the necessary dependencies for testing
+go get -t -d
+
 kube::etcd::start
 kube::log::status "Start benchmarking..."
 go test -v -bench . -run xxxx
