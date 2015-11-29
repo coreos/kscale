@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/api/testapi"
@@ -110,21 +109,18 @@ func benchmarkScheduling(n, p int, b *testing.B) {
 	numPods := p
 	makeNPods(c, numPods)
 	for {
-		objs := schedulerConfigFactory.ScheduledPodLister.Store.List()
-		if len(objs) >= numPods {
-			glog.Infof("%v pods scheduled.\n", len(objs))
+		scheduled := schedulerConfigFactory.ScheduledPodLister.Store.List()
+		if len(scheduled) >= numPods {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-
 	// start benchmark
 	b.ResetTimer()
 	makeNPods(c, b.N)
 	for {
-		objs := schedulerConfigFactory.ScheduledPodLister.Store.List()
-		if len(objs) >= numPods+b.N {
-			glog.Infof("%v pods scheduled.\n", len(objs))
+		scheduled := schedulerConfigFactory.ScheduledPodLister.Store.List()
+		if len(scheduled) >= numPods+b.N {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)

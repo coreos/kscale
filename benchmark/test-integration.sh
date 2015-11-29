@@ -21,4 +21,6 @@ go get -t -d
 
 kube::etcd::start
 kube::log::status "Start benchmarking..."
-go test -v -bench . -run xxxx
+
+# TODO: set log-dir and remove it after benchmark
+go test -v -bench . -run xxxx -logtostderr=false
