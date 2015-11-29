@@ -3,6 +3,13 @@
 *.a
 *.so
 
+# ctags file
+*.tags
+
+# Intellij
+.idea/
+*.iml
+
 # Folders
 _obj
 _test
