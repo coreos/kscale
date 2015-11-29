@@ -23,4 +23,5 @@ kube::etcd::start
 kube::log::status "Start benchmarking..."
 
 # TODO: set log-dir and remove it after benchmark
-go test -v -bench . -run xxxx -logtostderr=false
+go test -c
+./benchmark.test -test.bench=. -test.run=xxxx -test.cpuprofile=prof.out -logtostderr=false
