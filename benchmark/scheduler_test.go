@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -16,43 +17,24 @@ import (
 	"k8s.io/kubernetes/pkg/master"
 	"k8s.io/kubernetes/plugin/pkg/admission/admit"
 	"k8s.io/kubernetes/plugin/pkg/scheduler"
-	_ "k8s.io/kubernetes/plugin/pkg/scheduler/algorithmprovider"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/factory"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
-// BenchmarkScheduling100Nodes0Pods benchmarks the scheduling rate
-// when the cluster has 100 nodes and 0 scheduled pods
-func BenchmarkScheduling100Nodes0Pods(b *testing.B) {
-	benchmarkScheduling(100, 0, b)
-}
+// TestScheduling1000Nodes tests the scheduler to schedule
+// 10K pods over 1000 nodes.
+// The test might take up to 1 hour.
+// The test prints out the number of scheduled pods every 1 second.
 
-// BenchmarkScheduling100Nodes1000Pods benchmarks the scheduling rate
-// when the cluster has 100 nodes and 1000 scheduled pods
-func BenchmarkScheduling100Nodes1000Pods(b *testing.B) {
-	benchmarkScheduling(100, 1000, b)
-}
-
-// BenchmarkScheduling1000Nodes0Pods benchmarks the scheduling rate
-// when the cluster has 1000 nodes and 0 scheduled pods
-func BenchmarkScheduling1000Nodes0Pods(b *testing.B) {
-	benchmarkScheduling(1000, 0, b)
-}
-
-// BenchmarkScheduling1000Nodes10000Pods benchmarks the scheduling rate
-// when the cluster has 1000 nodes and 1000 scheduled pods
-func BenchmarkScheduling1000Nodes1000Pods(b *testing.B) {
-	benchmarkScheduling(1000, 1000, b)
-}
-
-func benchmarkScheduling(n, p int, b *testing.B) {
+// TODO: bench and test should share the same setup code.
+func TestScheduling1000Nodes10KPods(t *testing.T) {
 	etcdStorage, err := framework.NewEtcdStorage()
 	if err != nil {
-		b.Fatalf("Couldn't create etcd storage: %v", err)
+		t.Fatalf("Couldn't create etcd storage: %v", err)
 	}
 	expEtcdStorage, err := framework.NewExtensionsEtcdStorage(nil)
 	if err != nil {
-		b.Fatalf("Unexpected error: %v", err)
+		t.Fatalf("Unexpected error: %v", err)
 	}
 
 	storageDestinations := master.NewStorageDestinations()
@@ -94,7 +76,7 @@ func benchmarkScheduling(n, p int, b *testing.B) {
 	schedulerConfigFactory := factory.NewConfigFactory(c, nil)
 	schedulerConfig, err := schedulerConfigFactory.Create()
 	if err != nil {
-		b.Fatalf("Couldn't create scheduler config: %v", err)
+		t.Fatalf("Couldn't create scheduler config: %v", err)
 	}
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -104,29 +86,22 @@ func benchmarkScheduling(n, p int, b *testing.B) {
 
 	defer close(schedulerConfig.StopEverything)
 
-	// prepare N nodes with P pods.
-	makeNNodes(c, n)
-	numPods := p
+	numPods := 10 * 1000
+	numNodes := 1000
+	makeNNodes(c, numNodes)
+
+	start := time.Now()
+	prev := 0
 	makeNPods(c, numPods)
 	for {
 		scheduled := schedulerConfigFactory.ScheduledPodLister.Store.List()
 		if len(scheduled) >= numPods {
-			break
+			return
 		}
-		time.Sleep(100 * time.Millisecond)
+		fmt.Printf("%ds rate: %d total: %d\n", time.Since(start)/time.Second, len(scheduled)-prev, len(scheduled))
+		prev = len(scheduled)
+		time.Sleep(1 * time.Second)
 	}
-	// start benchmark
-	b.ResetTimer()
-	makeNPods(c, b.N)
-	for {
-		scheduled := schedulerConfigFactory.ScheduledPodLister.Store.List()
-		if len(scheduled) >= numPods+b.N {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	b.StopTimer()
 }
 
 func makeNNodes(c client.Interface, N int) {
