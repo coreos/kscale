@@ -9,5 +9,7 @@ It doesn't upload the directory because publisher needs to create a new one acco
 
 Because we are running nightly jobs, the unit of storage granularity is day. Cloud storage directory layout for one publication will look like:
 ```sh
-kscale/results/kubemark/{$date: 2015-11-27}/
+{$bucket_name}/kubemark/{$date: 2015-11-27}/
 ```
+
+See metrics results in [metrics-kscale](https://console.developers.google.com/storage/browser/metrics-kscale/)
