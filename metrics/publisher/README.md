@@ -1,11 +1,9 @@
 Metrics Publisher
 ======
 
-Metrics publisher takes all reports from a directory and uploads them to cloud storage.
+Metrics publisher takes a kubemark density test log (we might extend this in the future), generates reports and uploads them to gcloud storage.
 
-Input is just a directory.
-Publisher will takes only the files (reports) within.
-It doesn't upload the directory because publisher needs to create a new one according to time format.
+Input is the kubemark log gcloud storage location.
 
 Because we are running nightly jobs, the unit of storage granularity is day. Cloud storage directory layout for one publication will look like:
 ```sh
