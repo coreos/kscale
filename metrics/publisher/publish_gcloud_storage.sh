@@ -14,6 +14,6 @@ DATE_FORMAT=$(date +"%Y-%m-%d")
 GCLOUD_STORAGE_FORMAT="gs://${BUCKET_NAME}/results/${DATE_FORMAT}/"
 
 pushd "${REPORTS_DIR}"
-	echo "uploading files..."
-    gsutil cp -r ./ "${GCLOUD_STORAGE_FORMAT}"
+	echo "uploading files to ${GCLOUD_STORAGE_FORMAT}"
+	gsutil cp -r ./ "${GCLOUD_STORAGE_FORMAT}"
 popd
