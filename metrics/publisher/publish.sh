@@ -4,8 +4,7 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBEMARK_LOG_GCLOUD_LOC=$1
-KUBEMARK_LOCAL_FILE="kubemark-log.txt"
+KUBEMARK_LOG_FILE=$1
 KUBEMARK_REPORT_DIR="kubemark"
 
 if ! command -v logplot >/dev/null 2>&1; then
@@ -24,12 +23,15 @@ trap cleanup EXIT
 pushd "${TEMP}"
 	mkdir "${KUBEMARK_REPORT_DIR}"
 	pushd "${KUBEMARK_REPORT_DIR}"
-		gsutil cp "${KUBEMARK_LOG_GCLOUD_LOC}" "${KUBEMARK_LOCAL_FILE}"
+    log_file=$(basename ${KUBEMARK_LOG_FILE})
+    cp "${KUBEMARK_LOG_FILE}" "${log_file}"
 		# Generate reports (plots) and publish them
-		logplot -f "${KUBEMARK_LOCAL_FILE}"
+		logplot -f "${log_file}"
 		echo "kubemark reports:" $(ls *)
 	popd
 popd
 
-./publish_gcloud_storage.sh "${TEMP}"
-
+# assumes that helper script are within the same dir
+pushd $(dirname $0)
+  ./publish_gcloud_storage.sh "${TEMP}"
+popd
