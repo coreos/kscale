@@ -11,9 +11,9 @@ set -o pipefail
 REPORTS_DIR=$1
 BUCKET_NAME="metrics-kscale"
 DATE_FORMAT=$(date +"%Y-%m-%d")
-GCLOUD_STORAGE_FORMAT="gs://${BUCKET_NAME}/results/${DATE_FORMAT}/"
+RESULT_DIR_LAYOUT="${BUCKET_NAME}/results/${DATE_FORMAT}/"
 
 pushd "${REPORTS_DIR}"
-	echo "uploading files..."
-    gsutil cp -r ./ "${GCLOUD_STORAGE_FORMAT}"
+	echo "uploading files to https://console.developers.google.com/storage/browser/${RESULT_DIR_LAYOUT}"
+	gsutil cp -r ./ "gs://${RESULT_DIR_LAYOUT}"
 popd
