@@ -20,7 +20,6 @@ cleanup() {
 
 trap cleanup EXIT
 
-# Copy kubemark log from cloud
 pushd "${TEMP}"
   mkdir -p "${KUBEMARK_REPORT_DIR}/${KUBEMARK_PROJECT_NAME}"
   pushd "${KUBEMARK_REPORT_DIR}/${KUBEMARK_PROJECT_NAME}"
