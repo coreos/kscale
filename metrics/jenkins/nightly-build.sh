@@ -11,14 +11,16 @@ export KUBE_PROMPT_FOR_UPDATE="N"
 : ${PUBLISHER_DIR:?"Need to set PUBLISHER_DIR"}
 # Assumes that most of the time we run nightly builds in k8s repo
 K8S_DIR=${K8S_DIR:-`pwd`}
-KUBEMARK_LOG_DIR=${KUBEMARK_LOG_DIR:-"/var/log"}
 
 # Used to tell if e2e test has been run successfully.
 # Note that if e2e test wasn't run, it's seen as a failure.
 # The script will exit 1 if e2e_test_succeed != "y". We use this in Jenkins to notify result.
 e2e_test_succeed="n"
 
+TEMPDIR=$(mktemp -d 2>/dev/null || mktemp -d -t metrics-publisher.XXXXXX)
+
 cleanup() {
+  rm -rf "${TEMPDIR}"
   (source "${ENV_SCRIPT_DIR}/kubemark-env.sh" && ${K8S_DIR}/test/kubemark/stop-kubemark.sh) || true
   (source "${ENV_SCRIPT_DIR}/k8s-cluster-env.sh" && ${K8S_DIR}/cluster/kube-down.sh) || true
 
@@ -38,20 +40,21 @@ source "${ENV_SCRIPT_DIR}/kubemark-env.sh" && ${K8S_DIR}/test/kubemark/start-kub
 # If test succeeded, the log file is named "kubemark-log-fail.txt"
 kubemark_log_file="kubemark-log.txt"
 ("${K8S_DIR}/test/kubemark/run-e2e-tests.sh" --ginkgo.focus="should\sallow\sstarting\s30\spods\sper\snode" --delete-namespace="false" --gather-resource-usage="false" \
-  | tee "${KUBEMARK_LOG_DIR}/${kubemark_log_file}") || true
+  | tee "${TEMPDIR}/${kubemark_log_file}") || true
 
-# For some reason, we can't trust e2e test exit code
-if [ "x$(tail -n 1 ${KUBEMARK_LOG_DIR}/${kubemark_log_file})" == "xTest Suite Passed" ]; then
+# For some reason, we can't trust e2e test script exit code
+if [ "x$(tail -n 1 ${TEMPDIR}/${kubemark_log_file})" == "xTest Suite Passed" ]; then
   e2e_test_succeed="y"
 fi
 
 echo "e2e test succeeded? ${e2e_test_succeed}"
 
-if [ -f "${KUBEMARK_LOG_DIR}/${kubemark_log_file}" ]; then
+if [ -f "${TEMPDIR}/${kubemark_log_file}" ]; then
   if [ "x${e2e_test_succeed}" != "xy" ]; then
     fail_kubemark_log_file="kubemark-log-fail.txt"
-    mv "${KUBEMARK_LOG_DIR}/${kubemark_log_file}" "${KUBEMARK_LOG_DIR}/${fail_kubemark_log_file}"
+    mv "${TEMPDIR}/${kubemark_log_file}" "${TEMPDIR}/${fail_kubemark_log_file}"
     kubemark_log_file=${fail_kubemark_log_file}
   fi
-  "${PUBLISHER_DIR}/publish.sh" "${KUBEMARK_LOG_DIR}/${kubemark_log_file}"
+  source "${ENV_SCRIPT_DIR}/publisher-env.sh" && \
+    KUBEMARK_LOG_FILE="${TEMPDIR}/${kubemark_log_file}" "${PUBLISHER_DIR}/publish.sh"
 fi
