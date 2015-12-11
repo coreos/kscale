@@ -62,11 +62,11 @@ if [ -f "${TEMPDIR}/${kubemark_log_file}" ]; then
   if [ "x${E2E_TEST_SUCCEED}" != "xy" ]; then
     fail_kubemark_log_file="kubemark-log-fail.txt"
     mv "${TEMPDIR}/${kubemark_log_file}" "${TEMPDIR}/${fail_kubemark_log_file}"
-    kubemark_log_file=${fail_kubemark_log_file}
+    kubemark_log_file="${fail_kubemark_log_file}"
   fi
 
   if source "${INPUT_ENV_DIR}/publisher-env.sh" && \
-    KUBEMARK_LOG_FILE="${TEMPDIR}/${kubemark_log_file}" "${PUBLISHER_DIR}/publish.sh"; then
+    KUBEMARK_LOG_FILE="${TEMPDIR}/${kubemark_log_file}" OUTPUT_ENV_FILE="${OUTPUT_ENV_FILE}" "${PUBLISHER_DIR}/publish.sh"; then
     TEST_RESULTS_UPLOADED="y"
   fi
 fi

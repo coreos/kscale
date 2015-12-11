@@ -6,6 +6,7 @@ set -o pipefail
 
 : ${KUBEMARK_LOG_FILE:?"Need to set KUBEMARK_LOG_FILE"}
 : ${KUBEMARK_PROJECT_NAME:?"Need to set KUBEMARK_PROJECT_NAME"}
+: ${OUTPUT_ENV_FILE:?"Need to set OUTPUT_ENV_FILE"}
 
 upload_to_gcs() {
   copy_dir=$1
