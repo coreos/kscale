@@ -11,9 +11,10 @@ upload_to_gcs() {
   copy_dir=$1
   bucket_name="metrics-kscale"
   date_format=$(date +"%Y-%m-%d")
-  gcs_dir="${bucket_name}/results/${date_format}/"
-	echo "uploading files to https://console.developers.google.com/storage/browser/${gcs_dir}"
-	gsutil cp -r "${copy_dir}" "gs://${gcs_dir}"
+  GCS_DIR="${bucket_name}/results/${date_format}/"
+
+  echo "GCS_DIR=\"https://console.developers.google.com/storage/browser/${GCS_DIR}\"" >> "${OUTPUT_ENV_FILE}"
+  gsutil cp -r "${copy_dir}" "gs://${GCS_DIR}"
 }
 
 if ! command -v logplot >/dev/null 2>&1; then
