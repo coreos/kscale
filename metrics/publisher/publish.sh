@@ -6,7 +6,7 @@ set -o pipefail
 
 KUBEMARK_LOG_FILE=$1
 KUBEMARK_REPORT_DIR="kubemark"
-kUBEMARK_PROJECT_NAME=${kUBEMARK_PROJECT_NAME:-"default"}
+KUBEMARK_PROJECT_NAME=${KUBEMARK_PROJECT_NAME:-"default"}
 
 if ! command -v logplot >/dev/null 2>&1; then
   echo "Please install logplot (github.com/coreos/kscale/logplot)"
@@ -22,8 +22,8 @@ trap cleanup EXIT
 
 # Copy kubemark log from cloud
 pushd "${TEMP}"
-  mkdir -p "${KUBEMARK_REPORT_DIR}/${kUBEMARK_PROJECT_NAME}"
-  pushd "${KUBEMARK_REPORT_DIR}/${kUBEMARK_PROJECT_NAME}"
+  mkdir -p "${KUBEMARK_REPORT_DIR}/${KUBEMARK_PROJECT_NAME}"
+  pushd "${KUBEMARK_REPORT_DIR}/${KUBEMARK_PROJECT_NAME}"
     log_file=$(basename ${KUBEMARK_LOG_FILE})
     cp "${KUBEMARK_LOG_FILE}" "${log_file}"
     # Generate reports (plots) and publish them
