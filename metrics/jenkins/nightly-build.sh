@@ -66,7 +66,7 @@ if [ -f "${TEMPDIR}/${kubemark_log_file}" ]; then
   fi
 
   if source "${INPUT_ENV_DIR}/publisher-env.sh" && \
-    KUBEMARK_LOG_FILE="${TEMPDIR}/${kubemark_log_file}" OUTPUT_ENV_FILE="${OUTPUT_ENV_FILE}" "${PUBLISHER_DIR}/publish.sh"; then
+    PUBLISH_WORK_DIR="${TEMPDIR}" KUBEMARK_LOG_FILE="${TEMPDIR}/${kubemark_log_file}" OUTPUT_ENV_FILE="${OUTPUT_ENV_FILE}" "${PUBLISHER_DIR}/publish.sh"; then
     TEST_RESULTS_UPLOADED="y"
   fi
 fi

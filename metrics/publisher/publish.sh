@@ -7,6 +7,7 @@ set -o pipefail
 : ${KUBEMARK_LOG_FILE:?"Need to set KUBEMARK_LOG_FILE"}
 : ${KUBEMARK_PROJECT_NAME:?"Need to set KUBEMARK_PROJECT_NAME"}
 : ${OUTPUT_ENV_FILE:?"Need to set OUTPUT_ENV_FILE"}
+: ${PUBLISH_WORK_DIR:?"Need to set PUBLISH_WORK_DIR"}
 
 upload_to_gcs() {
   copy_dir=$1
@@ -23,13 +24,14 @@ if ! command -v logplot >/dev/null 2>&1; then
   exit 1
 fi
 
-# Current dir is the workspace.
-mkdir -p "${KUBEMARK_PROJECT_NAME}"
-mv "${KUBEMARK_LOG_FILE}" "${KUBEMARK_PROJECT_NAME}/"
-pushd "${KUBEMARK_PROJECT_NAME}"
-  log_file=$(basename ${KUBEMARK_LOG_FILE})
-  logplot -f "${log_file}"
-  echo "kubemark reports:" $(ls *)
-popd
+pushd "${PUBLISH_WORK_DIR}"
+  mkdir -p "${KUBEMARK_PROJECT_NAME}"
+  mv "${KUBEMARK_LOG_FILE}" "${KUBEMARK_PROJECT_NAME}/"
+  pushd "${KUBEMARK_PROJECT_NAME}"
+    log_file=$(basename ${KUBEMARK_LOG_FILE})
+    logplot -f "${log_file}"
+    echo "kubemark reports:" $(ls *)
+  popd
 
-upload_to_gcs `pwd`
+  upload_to_gcs ${PUBLISH_WORK_DIR}
+popd
