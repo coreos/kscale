@@ -33,5 +33,5 @@ pushd "${PUBLISH_WORK_DIR}"
     echo "kubemark reports:" $(ls *)
   popd
 
-  upload_to_gcs ${PUBLISH_WORK_DIR}
+  upload_to_gcs "./"
 popd
