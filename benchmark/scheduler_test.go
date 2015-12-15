@@ -17,13 +17,13 @@ func TestScheduling1000Nodes10KPods(t *testing.T) {
 	defer destroyFunc()
 	c := schedulerConfigFactory.Client
 
-	numPods := 1000
-	numNodes := 10000
+	numPods := 10000
+	numNodes := 1000
 	makeNodes(c, numNodes)
 	makePods(c, numPods)
 
-	start := time.Now()
 	prev := 0
+	start := time.Now()
 	for {
 		scheduled := schedulerConfigFactory.ScheduledPodLister.Store.List()
 		fmt.Printf("%ds rate: %d total: %d\n", time.Since(start)/time.Second, len(scheduled)-prev, len(scheduled))

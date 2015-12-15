@@ -3,7 +3,6 @@ package benchmark
 import (
 	"net/http"
 	"net/http/httptest"
-	"sync"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
@@ -16,25 +15,6 @@ import (
 	_ "k8s.io/kubernetes/plugin/pkg/scheduler/algorithmprovider"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/factory"
 	"k8s.io/kubernetes/test/integration/framework"
-)
-
-var (
-	podSpec = api.PodSpec{
-		Containers: []api.Container{{
-			Name:  "pause",
-			Image: "gcr.io/google_containers/pause:1.0",
-			Resources: api.ResourceRequirements{
-				Limits: api.ResourceList{
-					api.ResourceCPU:    resource.MustParse("100m"),
-					api.ResourceMemory: resource.MustParse("500Mi"),
-				},
-				Requests: api.ResourceList{
-					api.ResourceCPU:    resource.MustParse("100m"),
-					api.ResourceMemory: resource.MustParse("500Mi"),
-				},
-			},
-		}},
-	}
 )
 
 // rate limiting notes:
@@ -110,12 +90,25 @@ func makePods(c client.Interface, podCount int) {
 		ObjectMeta: api.ObjectMeta{
 			GenerateName: "scheduler-test-pod-",
 		},
-		Spec: podSpec,
+		Spec: api.PodSpec{
+			Containers: []api.Container{{
+				Name:  "pause",
+				Image: "gcr.io/google_containers/pause:1.0",
+				Resources: api.ResourceRequirements{
+					Limits: api.ResourceList{
+						api.ResourceCPU:    resource.MustParse("100m"),
+						api.ResourceMemory: resource.MustParse("500Mi"),
+					},
+					Requests: api.ResourceList{
+						api.ResourceCPU:    resource.MustParse("100m"),
+						api.ResourceMemory: resource.MustParse("500Mi"),
+					},
+				},
+			}},
+		},
 	}
-	var wg sync.WaitGroup
 	threads := 30
-	wg.Add(threads)
-	remaining := make(chan int, 100)
+	remaining := make(chan int, 500)
 	go func() {
 		for i := 0; i < podCount; i++ {
 			remaining <- i
@@ -124,7 +117,6 @@ func makePods(c client.Interface, podCount int) {
 	}()
 	for i := 0; i < threads; i++ {
 		go func() {
-			defer wg.Done()
 			for {
 				_, ok := <-remaining
 				if !ok {
@@ -139,5 +131,4 @@ func makePods(c client.Interface, podCount int) {
 			}
 		}()
 	}
-	wg.Wait()
 }

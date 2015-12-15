@@ -29,13 +29,12 @@ func BenchmarkScheduling1000Nodes1000Pods(b *testing.B) {
 	benchmarkScheduling(1000, 1000, b)
 }
 
-func benchmarkScheduling(n, p int, b *testing.B) {
+func benchmarkScheduling(numNodes, numPods int, b *testing.B) {
 	schedulerConfigFactory, finalFunc := mustSetupScheduler()
 	defer finalFunc()
 	c := schedulerConfigFactory.Client
 
-	makeNodes(c, n)
-	numPods := p
+	makeNodes(c, numNodes)
 	makePods(c, numPods)
 	for {
 		scheduled := schedulerConfigFactory.ScheduledPodLister.Store.List()
