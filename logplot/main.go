@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/gonum/plot"
@@ -14,13 +15,16 @@ import (
 	"github.com/gonum/plot/vg"
 )
 
+// total number of pods to be scheduled and run
+var totalPods int
+
 func main() {
 	fpath := flag.String("f", "data.txt", "data file path")
 	dtype := flag.String("t", "density", "data type")
 	flag.Parse()
 
 	if *dtype != "density" {
-		fmt.Fprintf(os.Stderr, "Unsupported data type: %s. Only support density.\n", dtype)
+		fmt.Fprintf(os.Stderr, "Unsupported data type: %s. Only support density.\n", *dtype)
 		os.Exit(1)
 	}
 
@@ -34,6 +38,7 @@ func main() {
 	plotDensity(rs)
 	plotCreatingRateVsPods(rs)
 	plotRunningRateVsPods(rs)
+	recordAvgRunningRate(rs)
 }
 
 type densityResult struct {
@@ -60,14 +65,13 @@ func parseDensity(r io.Reader) (results []densityResult) {
 	for {
 		var r densityResult
 		var garbageString string
-		var garbageInt int
 
 		bytes, err := br.ReadBytes('\n')
 		if err != nil {
 			if err != io.EOF {
 				panic(err)
 			}
-			return results
+			break
 		}
 
 		line := strings.TrimSpace(string(bytes[:len(bytes)-1]))
@@ -84,7 +88,7 @@ func parseDensity(r io.Reader) (results []densityResult) {
 
 		line = line[pi:]
 
-		_, err = fmt.Sscanf(line, densityFormat, &r.created, &garbageInt, &r.running,
+		_, err = fmt.Sscanf(line, densityFormat, &r.created, &totalPods, &r.running,
 			&r.pending, &r.waiting, &garbageString)
 
 		if err != nil {
@@ -97,7 +101,6 @@ func parseDensity(r io.Reader) (results []densityResult) {
 
 		results = append(results, r)
 	}
-
 	return results
 }
 
@@ -174,6 +177,25 @@ func plotRunningRateVsPods(rs []densityResult) {
 	fmt.Println("successfully plotted density graph to density-running-rate.svg")
 }
 
+func recordAvgRunningRate(rs []densityResult) {
+	f, err := os.Create("avg-running-rate.txt")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: cannot create 'avg-running-rate.txt' file")
+		os.Exit(1)
+	}
+
+	defer f.Close()
+
+	r := getAvgRunningRate(rs)
+	s := strconv.FormatFloat(r, 'f', 6, 64)
+	_, err = f.WriteString(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: failed to write to 'avg-running-rate.txt'")
+		os.Exit(1)
+	}
+	fmt.Println("successfully write average running rate to avg-running-rate.txt")
+}
+
 func getCreatedPoints(rs []densityResult) plotter.XYs {
 	pts := make(plotter.XYs, len(rs))
 
@@ -240,4 +262,15 @@ func getRunningRatePoints(rs []densityResult) plotter.XYs {
 		pts[i].Y = float64(rs[i].running-rs[i-1].running) / float64(interval)
 	}
 	return pts
+}
+
+func getAvgRunningRate(rs []densityResult) float64 {
+	interval := 10
+	for i := range rs {
+		if rs[i].running >= totalPods {
+			return float64(rs[i].running) / float64((i+1)*interval)
+		}
+	}
+	n := len(rs)
+	return float64(rs[n-1].running) / float64(n*interval)
 }
