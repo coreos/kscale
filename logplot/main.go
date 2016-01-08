@@ -24,7 +24,7 @@ func main() {
 	flag.Parse()
 
 	if *dtype != "density" {
-		fmt.Fprintf(os.Stderr, "Unsupported data type: %s. Only support density.\n", dtype)
+		fmt.Fprintf(os.Stderr, "Unsupported data type: %s. Only support density.\n", *dtype)
 		os.Exit(1)
 	}
 
