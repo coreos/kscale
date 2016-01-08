@@ -13,6 +13,9 @@ export KUBE_PROMPT_FOR_UPDATE="N"
 # Assumes that most of the time we run nightly builds in k8s repo
 K8S_DIR=${K8S_DIR:-`pwd`}
 
+# We're going to assume that the output file is reused all the time and use it as
+# fast turnaround to record last average running rate.
+LAST_AVG_RUNING_RATE=$((cat "${OUTPUT_ENV_FILE}" | grep -E "^avg_running_rate=" | cut -d '=' -f2) || echo "")
 echo "" > "${OUTPUT_ENV_FILE}"
 
 # Used to tell if e2e test has been run successfully.
@@ -67,6 +70,7 @@ if [ -f "${TEMPDIR}/${kubemark_log_file}" ]; then
 
   if source "${INPUT_ENV_DIR}/publisher-env.sh" && \
     PUBLISH_WORK_DIR="${TEMPDIR}" KUBEMARK_LOG_FILE="${TEMPDIR}/${kubemark_log_file}" OUTPUT_ENV_FILE="${OUTPUT_ENV_FILE}" "${PUBLISHER_DIR}/publish.sh"; then
+    echo "last_avg_running_rate=${LAST_AVG_RUNING_RATE}" >> "${OUTPUT_ENV_FILE}"
     TEST_RESULTS_UPLOADED="y"
   fi
 fi
