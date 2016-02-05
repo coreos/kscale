@@ -30,7 +30,8 @@ pushd "${PUBLISH_WORK_DIR}"
   pushd "${KUBEMARK_PROJECT_NAME}"
     log_file=$(basename ${KUBEMARK_LOG_FILE})
     logplot -f "${log_file}"
-    echo "kubemark reports:" $(ls *)
+    echo "avg_running_rate=$(cat avg-running-rate.txt)" >> "${OUTPUT_ENV_FILE}"
+    echo "kubemark reports: $(ls *)"
   popd
 
   upload_to_gcs "./"
