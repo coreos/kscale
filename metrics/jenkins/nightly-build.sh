@@ -52,7 +52,7 @@ source "${INPUT_ENV_DIR}/kubemark-env.sh" && ${K8S_DIR}/test/kubemark/start-kube
 # If test succeeded, the log file is named "kubemark-log.txt"
 # If test succeeded, the log file is named "kubemark-log-fail.txt"
 kubemark_log_file="kubemark-log.txt"
-("${K8S_DIR}/test/kubemark/run-e2e-tests.sh" --ginkgo.focus="should\sallow\sstarting\s30\spods\sper\snode" --delete-namespace="false" --gather-resource-usage="false" \
+("${K8S_DIR}/test/kubemark/run-e2e-tests.sh" --ginkgo.focus="should\sallow\sstarting\s30\spods\sper\snode" --gather-resource-usage="false" \
   | tee "${TEMPDIR}/${kubemark_log_file}") || true
 
 # For some reason, we can't trust e2e test script exit code
