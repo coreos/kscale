@@ -13,7 +13,7 @@ upload_to_gcs() {
   copy_dir=$1
   bucket_name="metrics-kscale"
   date_format=$(date +"%Y-%m-%d")
-  GCS_DIR=${GCS_DIR:-"${bucket_name}/results/${date_format}/"}
+  GCS_DIR=${GCS_DIR:-"${bucket_name}/jenkins/${date_format}/${BUILD_NUMBER}"}
 
   echo "GCS_DIR=\"https://console.developers.google.com/storage/browser/${GCS_DIR}\"" >> "${OUTPUT_ENV_FILE}"
   gsutil cp -r "${copy_dir}" "gs://${GCS_DIR}"
