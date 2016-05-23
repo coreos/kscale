@@ -1,77 +1,99 @@
 #!/usr/bin/env bash
 
+# many assumptions made here to set up jenkins environment
+source $HOME/.bash_profile
+
 set -o errexit
 set -o nounset
 set -o pipefail
 
-export KUBE_SKIP_UPDATE="y"
-export KUBE_PROMPT_FOR_UPDATE="N"
 
-: ${INPUT_ENV_DIR:?"Need to set INPUT_ENV_DIR"}
-: ${PUBLISHER_DIR:?"Need to set PUBLISHER_DIR"}
-: ${OUTPUT_ENV_FILE}:?"Need to set OUTPUT_ENV_FILE"}
-# Assumes that most of the time we run nightly builds in k8s repo
-K8S_DIR=${K8S_DIR:-`pwd`}
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1
+# gcloud config set core/disable_prompts 1
 
-# We're going to assume that the output file is reused all the time and use it as
-# fast turnaround to record last average running rate.
-LAST_AVG_RUNING_RATE=$((cat "${OUTPUT_ENV_FILE}" | grep -E "^avg_running_rate=" | cut -d '=' -f2) || echo "")
-echo "" > "${OUTPUT_ENV_FILE}"
+export KUBE_SKIP_CONFIRMATIONS=y
+export KUBE_FASTBUILD=true
+export KUBE_GCE_NETWORK=default
+# export NUM_NODES="6"
+# export MASTER_SIZE="n1-standard-16"
+# export NODE_SIZE="n1-standard-2"
 
-# Used to tell if e2e test has been run successfully.
-# Note that if e2e test wasn't run, it's seen as a failure.
-E2E_TEST_SUCCEED="n"
-# Used to tell if test results (incl. plots) has been uploaded successfully.
-TEST_RESULTS_UPLOADED="n"
+gcloud version
+gsutil version
+go version
+env
 
-TEMPDIR=$(mktemp -d 2>/dev/null || mktemp -d -t metrics-publisher.XXXXXX)
+# function cleanup() {
+# }
+# trap cleanup EXIT
 
-cleanup() {
-  rm -rf "${TEMPDIR}"
-  (source "${INPUT_ENV_DIR}/kubemark-env.sh" && ${K8S_DIR}/test/kubemark/stop-kubemark.sh) || true
-  (source "${INPUT_ENV_DIR}/k8s-cluster-env.sh" && ${K8S_DIR}/cluster/kube-down.sh) || true
-
-  echo "output env:"
-  cat "${OUTPUT_ENV_FILE}"
-
-  exitCode="0"
-  if [ "x${E2E_TEST_SUCCEED}" != "xy" ]; then
-    exitCode="1"
-  fi
-  if [ "x${TEST_RESULTS_UPLOADED}" != "xy" ]; then
-    exitCode="1"
-  fi
-  exit "${exitCode}"
+function build_k8s() {
+  make clean
+  go run ./hack/e2e.go -v --build
 }
 
-trap cleanup EXIT
+function upload_gcs() {
+  bucket_name="e2e-etcd3"
+  date_format=$(date +"%Y-%m-%d")
+  GCS_DIR=${GCS_DIR:-"${bucket_name}/jenkins-${JOB_NAME}/${date_format}/${BUILD_NUMBER}"}
+  ls -l _artifacts/
+  gsutil -m cp -r e2e.log _artifacts "gs://${GCS_DIR}"
+  GCS_HTTP_LOC="https://console.developers.google.com/storage/browser/${GCS_DIR}"
+  echo "Uploaded: ${GCS_HTTP_LOC}"
+}
 
-source "${INPUT_ENV_DIR}/k8s-cluster-env.sh" && ${K8S_DIR}/cluster/kube-up.sh
+function run_e2e() {
+  local -r ginkgo_test_args="${1}"
+  echo "ginkgo_test_args: ${ginkgo_test_args}"
+  go run ./hack/e2e.go -v --test \
+      ${ginkgo_test_args:+--test_args="${ginkgo_test_args}"}
+}
 
-source "${INPUT_ENV_DIR}/kubemark-env.sh" && ${K8S_DIR}/test/kubemark/start-kubemark.sh
-# If test succeeded, the log file is named "kubemark-log.txt"
-# If test succeeded, the log file is named "kubemark-log-fail.txt"
-kubemark_log_file="kubemark-log.txt"
-("${K8S_DIR}/test/kubemark/run-e2e-tests.sh" --ginkgo.focus="should\sallow\sstarting\s30\spods\sper\snode" --gather-resource-usage="false" \
-  | tee "${TEMPDIR}/${kubemark_log_file}") || true
+function parse_e2e_result() {
+  if [ "$(tail -n 1 e2e.log)" != "Test Suite Passed" ]; then
+    return 1
+  fi
+  return 0
+}
 
-# For some reason, we can't trust e2e test script exit code
-if [ "x$(tail -n 1 ${TEMPDIR}/${kubemark_log_file})" == "xTest Suite Passed" ]; then
-  E2E_TEST_SUCCEED="y"
-fi
-echo "E2E_TEST_SUCCEED=\"${E2E_TEST_SUCCEED}\"" >> "${OUTPUT_ENV_FILE}"
 
-if [ -f "${TEMPDIR}/${kubemark_log_file}" ]; then
-  if [ "x${E2E_TEST_SUCCEED}" != "xy" ]; then
-    fail_kubemark_log_file="kubemark-log-fail.txt"
-    mv "${TEMPDIR}/${kubemark_log_file}" "${TEMPDIR}/${fail_kubemark_log_file}"
-    kubemark_log_file="${fail_kubemark_log_file}"
+function run_default() {
+  export GINKGO_PARALLEL="y"
+  run_e2e "--ginkgo.skip=\[Slow\]|\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]" | tee e2e.log
+  run_e2e "--ginkgo.focus=\[Slow\] --ginkgo.skip=\[Serial\]|\[Disruptive\]|\[Flaky\]|\[Feature:.+\]" | tee -a e2e.log
+}
+
+function run_test() {
+  go run ./hack/e2e.go -v --up
+  # Regardless of failure of each command, we should delete the cluster
+
+  if [ "${GINKGO_TEST_ARGS}" == "default" ]; then
+    run_default || exitcode=1
+  else
+    (run_e2e "${GINKGO_TEST_ARGS:-}" | tee e2e.log) || exitcode=1
   fi
 
-  if source "${INPUT_ENV_DIR}/publisher-env.sh" && \
-    PUBLISH_WORK_DIR="${TEMPDIR}" KUBEMARK_LOG_FILE="${TEMPDIR}/${kubemark_log_file}" OUTPUT_ENV_FILE="${OUTPUT_ENV_FILE}" "${PUBLISHER_DIR}/publish.sh"; then
-    echo "last_avg_running_rate=${LAST_AVG_RUNING_RATE}" >> "${OUTPUT_ENV_FILE}"
-    TEST_RESULTS_UPLOADED="y"
-  fi
+  e2e_result=$(tail -n 6 e2e.log | sed -r "s/\[([0-9]{1,2}(;[0-9]{1,2})*)?m//g")
+
+  rm -rf _artifacts
+  ./cluster/log-dump.sh || true
+  upload_gcs || true
+  go run ./hack/e2e.go -v --down || true
+}
+
+if ! build_k8s; then
+  MAIL_SUBJECT="${BUILD_TAG} Failed" MAIL_TEXT="Build failed!" "$HOME/mail/mailgun.sh"
+  exit 1
 fi
-echo "TEST_RESULTS_UPLOADED=\"${TEST_RESULTS_UPLOADED}\"" >> "${OUTPUT_ENV_FILE}"
+
+exitcode=0
+run_test
+export MAIL_TEXT=$(printf "Jenkins URL: ${BUILD_URL}\nGCS: ${GCS_HTTP_LOC}\n\nResult: ${e2e_result}")
+if [ "${exitcode}" == "0" ]; then
+  MAIL_SUBJECT="${BUILD_TAG} Passed" "$HOME/mail/mailgun.sh"
+else
+  MAIL_SUBJECT="${BUILD_TAG} Failed" "$HOME/mail/mailgun.sh"
+  exit 1
+fi
+
+exit 0
