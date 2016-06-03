@@ -19,7 +19,9 @@ func main() {
 	flag.Parse()
 
 	kubeconfig := &restclient.Config{
-		Host: fmt.Sprintf("http://%s", apisrvAddr),
+		Host:  fmt.Sprintf("http://%s", apisrvAddr),
+		QPS:   1000,
+		Burst: 1000,
 	}
 
 	replicationcontroller.NewReplicationManagerFromClient(

@@ -11,8 +11,10 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
+const numPods = 1000000
+
 func ExitError(msg string, args ...interface{}) {
-	fmt.Printf(msg+"\n", args)
+	fmt.Fprintf(os.Stderr, msg+"\n", args)
 	os.Exit(1)
 }
 
@@ -22,7 +24,9 @@ func main() {
 	flag.Parse()
 
 	cfg := &restclient.Config{
-		Host: fmt.Sprintf("http://%s", apisrvAddr),
+		Host:  fmt.Sprintf("http://%s", apisrvAddr),
+		QPS:   1000,
+		Burst: 1000,
 	}
 	c, err := client.New(cfg)
 	if err != nil {
@@ -32,19 +36,21 @@ func main() {
 	// createRC(c)
 	// updateRC(c)
 	// deleteRC(c)
-	// c.Pods("wan-ns").Delete("wan-rc-tort0", api.NewDeleteOptions(0))
+	start := 0
 	for {
 		time.Sleep(3 * time.Second)
 		podList, err := c.Pods(api.NamespaceAll).List(api.ListOptions{})
 		if err != nil {
 			ExitError("List pods failed: %v", err)
 		}
-		for _, pod := range podList.Items {
-			fmt.Println("pod", pod.Namespace, pod.Name)
+		start += 3
+		fmt.Println(start, len(podList.Items))
+		if len(podList.Items) == numPods {
+			break
 		}
-		fmt.Println("-------")
 	}
 	fmt.Println("Success...")
+	// c.Pods("wan-ns").Delete("wan-rc-tort0", api.NewDeleteOptions(0))
 }
 
 func createRC(c *client.Client) {
@@ -53,7 +59,7 @@ func createRC(c *client.Client) {
 			Name: "wan-rc",
 		},
 		Spec: api.ReplicationControllerSpec{
-			Replicas: 3,
+			Replicas: numPods,
 			Selector: map[string]string{
 				"name": "wan-label",
 			},
@@ -84,7 +90,7 @@ func updateRC(c *client.Client) {
 			Name: "wan-rc",
 		},
 		Spec: api.ReplicationControllerSpec{
-			Replicas: 3,
+			Replicas: 0,
 			Selector: map[string]string{
 				"name": "wan-label",
 			},
