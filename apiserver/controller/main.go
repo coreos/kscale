@@ -12,10 +12,11 @@ import (
 )
 
 func main() {
-	lookupCacheSizeForRC := 4096
-	concurrentRCSyncs := 5
+	lookupCacheSizeForRC := 4096 // query controller by pod cache
 	var apisrvAddr string
+	var concurrentRCSyncs int
 	flag.StringVar(&apisrvAddr, "addr", "localhost:8080", "APIServer addr")
+	flag.IntVar(&concurrentRCSyncs, "p", 5, "Concurrent RC goroutines")
 	flag.Parse()
 
 	kubeconfig := &restclient.Config{

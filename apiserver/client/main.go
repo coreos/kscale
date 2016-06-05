@@ -4,68 +4,76 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
+	controllerframework "k8s.io/kubernetes/pkg/controller/framework"
+	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/watch"
 )
 
-const numPods = 1000000
+const (
+	scaleNS = "scale-ns"
+)
+
+type rcJob struct {
+	kubeClient *client.Client
+}
 
 func ExitError(msg string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, msg+"\n", args)
+	fmt.Println("exiting with error:")
+	fmt.Printf(msg+"\n", args)
 	os.Exit(1)
 }
 
 func main() {
 	var apisrvAddr string
+	var rcNum int
+	var podNum int
 	flag.StringVar(&apisrvAddr, "addr", "localhost:8080", "APIServer addr")
+	flag.IntVar(&rcNum, "rc", 1000, "number of RC")
+	flag.IntVar(&podNum, "pod", 100, "number of pods per RC")
 	flag.Parse()
 
-	cfg := &restclient.Config{
-		Host:  fmt.Sprintf("http://%s", apisrvAddr),
-		QPS:   1000,
-		Burst: 1000,
-	}
-	c, err := client.New(cfg)
+	c, err := createClient(apisrvAddr)
 	if err != nil {
-		ExitError("client.New failed: %v", err)
+		ExitError("createClient failed: %v", err)
 	}
 
-	// createRC(c)
-	// updateRC(c)
-	// deleteRC(c)
-	start := 0
-	for {
-		time.Sleep(3 * time.Second)
-		podList, err := c.Pods(api.NamespaceAll).List(api.ListOptions{})
-		if err != nil {
-			ExitError("List pods failed: %v", err)
-		}
-		start += 3
-		fmt.Println(start, len(podList.Items))
-		if len(podList.Items) == numPods {
-			break
-		}
+	fmt.Printf("Creating %d rc, each of %d pods\n", rcNum, podNum)
+
+	var wg sync.WaitGroup
+	wg.Add(rcNum)
+	for i := 0; i < rcNum; i++ {
+		// TODO: clean up on failure
+		go func(id int) {
+			defer wg.Done()
+			createRC(c, id, podNum)
+			waitRCCreatePods(c, id, podNum)
+		}(i)
 	}
+	wg.Wait()
+
+	// introduce chaos
 	fmt.Println("Success...")
-	// c.Pods("wan-ns").Delete("wan-rc-tort0", api.NewDeleteOptions(0))
 }
 
-func createRC(c *client.Client) {
+func createRC(c *client.Client, id, podNum int) {
 	rc := &api.ReplicationController{
 		ObjectMeta: api.ObjectMeta{
-			Name: "wan-rc",
+			Name: makeRCName(id),
 		},
 		Spec: api.ReplicationControllerSpec{
-			Replicas: numPods,
-			Selector: map[string]string{
-				"name": "wan-label",
-			},
+			Replicas: int32(podNum),
+			Selector: makeLabel(id),
 			Template: &api.PodTemplateSpec{
 				ObjectMeta: api.ObjectMeta{
-					Labels: map[string]string{"name": "wan-label"},
+					Labels: makeLabel(id),
 				},
 				Spec: api.PodSpec{
 					Containers: []api.Container{
@@ -78,10 +86,56 @@ func createRC(c *client.Client) {
 			},
 		},
 	}
-	if _, err := c.ReplicationControllers("wan-ns").Create(rc); err != nil {
+	if _, err := c.ReplicationControllers(scaleNS).Create(rc); err != nil {
 		ExitError("create RC failed: %v", err)
 	}
-	fmt.Println("created rc...")
+	fmt.Printf("created rc: %s\n", makeRCName(id))
+}
+
+func waitRCCreatePods(c *client.Client, id, podNum int) {
+	labelSelector := labels.SelectorFromSet(labels.Set(makeLabel(id)))
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	total := 0
+	finishChan := make(chan struct{})
+	podStore, runner := controllerframework.NewInformer(
+		&cache.ListWatch{
+			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
+				options.LabelSelector = labelSelector
+				return c.Pods(scaleNS).List(options)
+			},
+			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
+				options.LabelSelector = labelSelector
+				return c.Pods(scaleNS).Watch(options)
+			},
+		},
+		&api.Pod{},
+		0,
+		controllerframework.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				total += 1
+				if total == podNum {
+					close(finishChan)
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				total -= 1
+			},
+		},
+	)
+
+	go runner.Run(stopCh)
+	for {
+		select {
+		case <-finishChan:
+			fmt.Printf("rc (%s) created %d pods\n", makeRCName(id), podNum)
+			return
+		case <-time.After(1 * time.Minute):
+			fmt.Printf("1 minute passed, rc (%s) has created %d pods\n", makeRCName(id), len(podStore.List()))
+		}
+	}
 }
 
 func updateRC(c *client.Client) {
@@ -112,11 +166,31 @@ func updateRC(c *client.Client) {
 	if _, err := c.ReplicationControllers("wan-ns").Update(rc); err != nil {
 		ExitError("update RC failed: %v", err)
 	}
-	fmt.Println("updated rc...")
 }
 
 func deleteRC(c *client.Client) {
 	if err := c.ReplicationControllers("wan-ns").Delete("wan-rc"); err != nil {
 		ExitError("create RC failed: %v", err)
 	}
+}
+
+func createClient(addr string) (*client.Client, error) {
+	cfg := &restclient.Config{
+		Host:  fmt.Sprintf("http://%s", addr),
+		QPS:   1000,
+		Burst: 1000,
+	}
+	c, err := client.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func makeRCName(id int) string {
+	return fmt.Sprintf("scale-rc-%d", id)
+}
+
+func makeLabel(id int) map[string]string {
+	return map[string]string{"name": fmt.Sprintf("scale-label-%d", id)}
 }
