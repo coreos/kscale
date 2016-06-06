@@ -21,10 +21,6 @@ const (
 	scaleNS = "scale-ns"
 )
 
-type rcJob struct {
-	kubeClient *client.Client
-}
-
 func ExitError(msg string, args ...interface{}) {
 	fmt.Println("exiting with error:")
 	fmt.Printf(msg+"\n", args)
