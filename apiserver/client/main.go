@@ -35,9 +35,11 @@ func main() {
 	var apisrvAddr string
 	var rcNum int
 	var podNum int
+	var chaosTestOnly bool
 	flag.StringVar(&apisrvAddr, "addr", "localhost:8080", "APIServer addr")
 	flag.IntVar(&rcNum, "rc", 1000, "number of RC")
 	flag.IntVar(&podNum, "pod", 100, "number of pods per RC")
+	flag.BoolVar(&chaosTestOnly, "chaos", false, "running chaos testing only")
 	flag.Parse()
 
 	c, err := createClient(apisrvAddr)
@@ -47,6 +49,26 @@ func main() {
 
 	fmt.Printf("Creating %d rc, each of %d pods\n", rcNum, podNum)
 
+	if !chaosTestOnly {
+		createPods(c, rcNum, podNum)
+	}
+
+	// introduce chaos
+	var wg sync.WaitGroup
+	wg.Add(rcNum)
+	for i := 0; i < rcNum; i++ {
+		// TODO: clean up on failure
+		go func(id int) {
+			defer wg.Done()
+			deletePodsRandomly(c, id, podNum)
+			waitRCRecoverPods(c, id, podNum)
+		}(i)
+	}
+	wg.Wait()
+	fmt.Println("Success...")
+}
+
+func createPods(c *client.Client, rcNum, podNum int) {
 	var wg sync.WaitGroup
 	wg.Add(rcNum)
 	for i := 0; i < rcNum; i++ {
@@ -58,9 +80,6 @@ func main() {
 		}(i)
 	}
 	wg.Wait()
-
-	// introduce chaos
-	fmt.Println("Success...")
 }
 
 func createRC(c *client.Client, id, podNum int) {
@@ -93,14 +112,95 @@ func createRC(c *client.Client, id, podNum int) {
 }
 
 func waitRCCreatePods(c *client.Client, id, podNum int) {
-	labelSelector := labels.SelectorFromSet(labels.Set(makeLabel(id)))
+	informer := createPodInformer(c, labels.SelectorFromSet(labels.Set(makeLabel(id))))
+
+	doneCh := make(chan struct{})
+	total := 0
+	informer.AddEventHandler(controllerframework.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			total += 1
+			if total == podNum {
+				close(doneCh)
+			}
+		},
+	})
 
 	stopCh := make(chan struct{})
 	defer close(stopCh)
+	go informer.Run(stopCh)
 
-	total := 0
-	finishChan := make(chan struct{})
-	podStore, runner := controllerframework.NewInformer(
+	store := informer.GetStore()
+	start := time.Now()
+	for {
+		select {
+		case <-doneCh:
+			if len(store.List()) != podNum {
+				panic("unexpected")
+			}
+			fmt.Printf("rc (%s) created %d pods\n", makeRCName(id), podNum)
+			return
+		case <-time.After(1 * time.Minute):
+			fmt.Printf("%v passed, rc (%s) has created %d pods\n", time.Since(start), makeRCName(id), len(store.List()))
+		}
+	}
+}
+
+func deletePodsRandomly(c *client.Client, id, podNum int) {
+	podList, err := c.Pods(scaleNS).List(api.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set(makeLabel(id))),
+	})
+	if err != nil {
+		ExitError("list pods failed: %v", err)
+	}
+	for i, pod := range podList.Items {
+		if i%2 != 0 {
+			continue
+		}
+		if err := c.Pods(scaleNS).Delete(pod.Name, api.NewDeleteOptions(0)); err != nil {
+			ExitError("delete pod (%s) failed: %v", pod.Name, err)
+		}
+		fmt.Printf("rc (%s) deleted pod %s\n", makeRCName(id), pod.Name)
+	}
+}
+
+func waitRCRecoverPods(c *client.Client, id, podNum int) {
+	informer := createPodInformer(c, labels.SelectorFromSet(labels.Set(makeLabel(id))))
+	store := informer.GetStore()
+
+	doneCh := make(chan bool, 1)
+	informer.AddEventHandler(controllerframework.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			if len(store.List()) == podNum {
+				select {
+				case doneCh <- true:
+				default:
+				}
+			}
+		},
+	})
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	go informer.Run(stopCh)
+
+	if len(store.List()) == podNum {
+		fmt.Printf("rc (%s) recovered to %d pods\n", makeRCName(id), podNum)
+		return
+	}
+	start := time.Now()
+	for {
+		select {
+		case <-doneCh:
+			fmt.Printf("rc (%s) recovered to %d pods\n", makeRCName(id), podNum)
+			return
+		case <-time.After(1 * time.Minute):
+			fmt.Printf("%v passed, rc (%s) has created %d pods\n", time.Since(start), makeRCName(id), len(store.List()))
+		}
+	}
+
+}
+
+func createPodInformer(c *client.Client, labelSelector labels.Selector) controllerframework.SharedInformer {
+	informer := controllerframework.NewSharedInformer(
 		&cache.ListWatch{
 			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
 				options.LabelSelector = labelSelector
@@ -113,65 +213,8 @@ func waitRCCreatePods(c *client.Client, id, podNum int) {
 		},
 		&api.Pod{},
 		0,
-		controllerframework.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				total += 1
-				if total == podNum {
-					close(finishChan)
-				}
-			},
-			DeleteFunc: func(obj interface{}) {
-				total -= 1
-			},
-		},
 	)
-
-	go runner.Run(stopCh)
-	for {
-		select {
-		case <-finishChan:
-			fmt.Printf("rc (%s) created %d pods\n", makeRCName(id), podNum)
-			return
-		case <-time.After(1 * time.Minute):
-			fmt.Printf("1 minute passed, rc (%s) has created %d pods\n", makeRCName(id), len(podStore.List()))
-		}
-	}
-}
-
-func updateRC(c *client.Client) {
-	rc := &api.ReplicationController{
-		ObjectMeta: api.ObjectMeta{
-			Name: "wan-rc",
-		},
-		Spec: api.ReplicationControllerSpec{
-			Replicas: 0,
-			Selector: map[string]string{
-				"name": "wan-label",
-			},
-			Template: &api.PodTemplateSpec{
-				ObjectMeta: api.ObjectMeta{
-					Labels: map[string]string{"name": "wan-label"},
-				},
-				Spec: api.PodSpec{
-					Containers: []api.Container{
-						{
-							Name:  "none",
-							Image: "none",
-						},
-					},
-				},
-			},
-		},
-	}
-	if _, err := c.ReplicationControllers("wan-ns").Update(rc); err != nil {
-		ExitError("update RC failed: %v", err)
-	}
-}
-
-func deleteRC(c *client.Client) {
-	if err := c.ReplicationControllers("wan-ns").Delete("wan-rc"); err != nil {
-		ExitError("create RC failed: %v", err)
-	}
+	return informer
 }
 
 func createClient(addr string) (*client.Client, error) {
