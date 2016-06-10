@@ -5,12 +5,8 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/coreos/etcd/clientv3"
-	"golang.org/x/net/context"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -39,12 +35,10 @@ func ExitError(msg string, args ...interface{}) {
 
 func main() {
 	var apisrvAddr string
-	var etcdAddr string
 	var rcNum int
 	var podNum int
 	var chaosTestOnly bool
 	flag.StringVar(&apisrvAddr, "addr", "localhost:8080", "APIServer addr")
-	flag.StringVar(&etcdAddr, "etcdaddr", "http://localhost:2379", "etcd addrs, splitted by ','. kube client is flawed...")
 	flag.IntVar(&rcNum, "rc", 1000, "number of RC")
 	flag.IntVar(&podNum, "pod", 100, "number of pods per RC")
 	flag.BoolVar(&chaosTestOnly, "chaos", false, "running chaos testing only")
@@ -61,15 +55,6 @@ func main() {
 		createPods(c, rcNum, podNum)
 	}
 
-	endpoints := strings.Split(etcdAddr, ",")
-	cfg := clientv3.Config{
-		Endpoints: endpoints,
-	}
-	etcdClient, err := clientv3.New(cfg)
-	if err != nil {
-		ExitError("etcd client New (%s) failed: %v", endpoints, err)
-	}
-
 	// introduce chaos
 	var wg sync.WaitGroup
 	wg.Add(rcNum)
@@ -78,7 +63,7 @@ func main() {
 		go func(id int) {
 			defer wg.Done()
 			deletePodsRandomly(c, id, podNum)
-			waitRCRecoverPods(context.TODO(), c, id, podNum, etcdClient)
+			waitRCCreatePods(c, id, podNum)
 		}(i)
 	}
 	wg.Wait()
@@ -151,9 +136,6 @@ func waitRCCreatePods(c *client.Client, id, podNum int) {
 	for {
 		select {
 		case <-doneCh:
-			if len(store.List()) != podNum {
-				panic("unexpected")
-			}
 			fmt.Printf("rc (%s) created %d pods\n", makeRCName(id), podNum)
 			return
 		case <-time.After(1 * time.Minute):
@@ -172,43 +154,6 @@ func deletePodsRandomly(c *client.Client, id, podNum int) {
 			ExitError("delete pod (%s) failed: %v", pod.Name, err)
 		}
 		fmt.Printf("rc (%s) deleted pod %s\n", makeRCName(id), pod.Name)
-	}
-}
-
-func waitRCRecoverPods(ctx context.Context, c *client.Client, id, podNum int, etcdClient *clientv3.Client) {
-	key := fmt.Sprintf("/registry/pods/%s/%s-", scaleNS, makeRCName(id))
-	getResp, err := etcdClient.Get(ctx, key, clientv3.WithPrefix())
-	if err != nil {
-		ExitError("etcdclient range prefix (%s) failed: %v", key, err)
-	}
-	total := len(getResp.Kvs)
-	w := etcdClient.Watch(ctx, key, clientv3.WithPrefix(), clientv3.WithRev(getResp.Header.Revision+1))
-
-	start := time.Now()
-	for {
-		if total == podNum {
-			break
-		}
-		select {
-		case wr, ok := <-w:
-			if !ok {
-				panic("unexpected")
-			}
-			for _, ev := range wr.Events {
-				if !ev.IsCreate() {
-					ExitError("not create event: key (%s)", ev.Kv.Key)
-				}
-				fmt.Printf("Recreated pod: key (%s)\n", ev.Kv.Key)
-				total++
-			}
-		case <-time.After(1 * time.Minute):
-			fmt.Printf("%v passed, rc (%s) has recovered to %d pods\n", time.Since(start), makeRCName(id), total)
-		}
-	}
-	fmt.Printf("rc (%s) created %d pods\n", makeRCName(id), podNum)
-	podList := listPods(c, id)
-	if len(podList.Items) != podNum {
-		panic("unexpected")
 	}
 }
 
