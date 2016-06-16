@@ -20,9 +20,9 @@ func main() {
 	var apisrvAddr string
 	var concurrentRCSyncs int
 	var pprofPort int
-	var dumpdir string
+	// var dumpdir string
 	flag.StringVar(&apisrvAddr, "addr", "localhost:8080", "APIServer addr")
-	flag.StringVar(&dumpdir, "dumpdir", "dump", "dump dir")
+	// flag.StringVar(&dumpdir, "dumpdir", "dump", "dump dir")
 	flag.IntVar(&concurrentRCSyncs, "p", 5, "Concurrent RC goroutines")
 	flag.IntVar(&pprofPort, "pprof-port", 6060, "local http handler")
 	flag.Parse()
