@@ -6,6 +6,9 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
+	"os/signal"
+	"runtime"
 
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
@@ -37,10 +40,20 @@ func main() {
 		Burst: 1000,
 	}
 
-	replicationcontroller.NewReplicationManagerFromClient(
+	rcm := replicationcontroller.NewReplicationManagerFromClient(
 		clientset.NewForConfigOrDie(restclient.AddUserAgent(kubeconfig, "replication-controller")),
 		controller.NoResyncPeriodFunc,
 		replicationcontroller.BurstReplicas,
 		lookupCacheSizeForRC,
-	).Run(concurrentRCSyncs, wait.NeverStop)
+	)
+	go rcm.Run(concurrentRCSyncs, wait.NeverStop)
+
+	notifier := make(chan os.Signal, 1)
+	signal.Notify(notifier, os.Interrupt, os.Kill)
+	fmt.Println("waiting for signal")
+	sig := <-notifier
+	fmt.Printf("sig: %v\n", sig)
+	var st runtime.MemStats
+	runtime.ReadMemStats(&st)
+	fmt.Printf("alloc: %d, sys: %d, idle: %d, inuse: %d\n", st.HeapAlloc, st.HeapSys, st.HeapIdle, st.HeapInuse)
 }

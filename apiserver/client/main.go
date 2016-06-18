@@ -22,6 +22,15 @@ const (
 	scaleNSPrefix = "scale-ns"
 )
 
+var garbageStr string
+var podMarkerEnabled bool
+
+func init() {
+	for i := 0; i < 128*1024; i++ {
+		garbageStr += "1"
+	}
+}
+
 type rcJob struct {
 	kubeClient *client.Client
 }
@@ -44,8 +53,9 @@ func main() {
 	flag.IntVar(&nsNum, "ns", 100, "number of namespaces")
 	flag.IntVar(&rcNum, "rc", 10, "number of RC per namespace")
 	flag.IntVar(&podNum, "pod", 100, "number of pods per RC")
-	flag.BoolVar(&freshCluster, "fresh", true, "running chaos testing only")
+	flag.BoolVar(&freshCluster, "fresh", true, "fresh cluster? We will create pods if so.")
 	flag.BoolVar(&chaosEnabled, "chaos", true, "running chaos testing only")
+	flag.BoolVar(&podMarkerEnabled, "markpod", false, "Marking pod")
 	flag.Parse()
 
 	c, err := createClient(apisrvAddr)
@@ -97,6 +107,10 @@ func createPods(c *client.Client, nsNum, rcNum, podNum int) {
 }
 
 func createRC(c *client.Client, nsID, rcID, podNum int) {
+	var args []string
+	if podMarkerEnabled {
+		args = []string{garbageStr}
+	}
 	rc := &api.ReplicationController{
 		ObjectMeta: api.ObjectMeta{
 			Name: makeRCName(rcID),
@@ -113,6 +127,7 @@ func createRC(c *client.Client, nsID, rcID, podNum int) {
 						{
 							Name:  "none",
 							Image: "none",
+							Args:  args,
 						},
 					},
 				},
@@ -202,8 +217,8 @@ func createPodInformer(c *client.Client, nsID, rcID int) controllerframework.Sha
 func createClient(addr string) (*client.Client, error) {
 	cfg := &restclient.Config{
 		Host:  fmt.Sprintf("http://%s", addr),
-		QPS:   1000,
-		Burst: 1000,
+		QPS:   100,
+		Burst: 100,
 	}
 	c, err := client.New(cfg)
 	if err != nil {

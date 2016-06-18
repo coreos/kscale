@@ -2,35 +2,42 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"runtime"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/cache"
 )
 
+var store map[int]*api.Pod
+
 func main() {
-	f, err := os.Open("pod.txt")
+	var filename string
+	flag.StringVar(&filename, "f", "pod.txt", "pod json data")
+	flag.Parse()
+
+	f, err := os.Open(filename)
 	if err != nil {
 		panic(err)
 	}
-	dec := json.NewDecoder(f)
-	pod := &api.Pod{}
-	if err := dec.Decode(pod); err != nil {
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%#v\n", pod)
+	f.Close()
 
-	// simulate store of 100k pods
-	rep := make(map[string]*api.Pod)
+	store = make(map[int]*api.Pod)
 	for i := 0; i < 100000; i++ {
-		key, err := cache.MetaNamespaceKeyFunc(pod)
-		if err != nil {
+		pod := &api.Pod{}
+		if err := json.Unmarshal(data, pod); err != nil {
 			panic(err)
 		}
-		key = fmt.Sprintf("%s-%d", key, i)
-		rep[key] = pod
+		store[i] = pod
 	}
-	for {
-	}
+
+	var st runtime.MemStats
+	runtime.ReadMemStats(&st)
+	fmt.Printf("alloc: %d, sys: %d, idle: %d, inuse: %d\n", st.HeapAlloc, st.HeapSys, st.HeapIdle, st.HeapInuse)
 }
