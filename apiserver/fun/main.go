@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/signal"
+	"runtime"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -29,8 +31,16 @@ func main() {
 			panic(err)
 		}
 		key = fmt.Sprintf("%s-%d", key, i)
-		rep[key] = pod
+		newPod := *pod
+		rep[key] = &newPod
 	}
-	for {
-	}
+
+	notifier := make(chan os.Signal, 1)
+	signal.Notify(notifier, os.Interrupt, os.Kill)
+	fmt.Println("waiting for signal")
+	sig := <-notifier
+	fmt.Printf("sig: %v\n", sig)
+	var st runtime.MemStats
+	runtime.ReadMemStats(&st)
+	fmt.Printf("alloc: %d, sys: %d, idle: %d, inuse: %d\n", st.HeapAlloc, st.HeapSys, st.HeapIdle, st.HeapInuse)
 }
