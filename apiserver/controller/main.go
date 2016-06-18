@@ -53,6 +53,7 @@ func main() {
 	fmt.Println("waiting for signal")
 	sig := <-notifier
 	fmt.Printf("sig: %v\n", sig)
+	runtime.GC()
 	var st runtime.MemStats
 	runtime.ReadMemStats(&st)
 	fmt.Printf("alloc: %d, sys: %d, idle: %d, inuse: %d\n", st.HeapAlloc, st.HeapSys, st.HeapIdle, st.HeapInuse)

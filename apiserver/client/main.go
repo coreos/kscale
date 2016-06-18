@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
-	"sync"
 	"time"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -22,12 +21,29 @@ const (
 	scaleNSPrefix = "scale-ns"
 )
 
-var garbageStr string
-var podMarkerEnabled bool
+var podMarkerSize int
+var apisrvAddr string
+var nsNum int
+var rcNum int
+var podNum int
+var freshCluster bool
+var chaosEnabled bool
+
+var garbage []byte
 
 func init() {
-	for i := 0; i < 128*1024; i++ {
-		garbageStr += "1"
+	flag.StringVar(&apisrvAddr, "addr", "localhost:8080", "APIServer addr")
+	flag.IntVar(&nsNum, "ns", 100, "number of namespaces")
+	flag.IntVar(&rcNum, "rc", 10, "number of RC per namespace")
+	flag.IntVar(&podNum, "pod", 100, "number of pods per RC")
+	flag.IntVar(&podMarkerSize, "pod-size", 0, "pod marker size in kb")
+	flag.BoolVar(&freshCluster, "fresh", true, "fresh cluster? We will create pods if so.")
+	flag.BoolVar(&chaosEnabled, "chaos", true, "running chaos testing only")
+	flag.Parse()
+
+	garbage = make([]byte, podMarkerSize*1024)
+	for i := 0; i < podMarkerSize*1024; i++ {
+		garbage[i] = 0x30
 	}
 }
 
@@ -43,21 +59,6 @@ func ExitError(msg string, args ...interface{}) {
 }
 
 func main() {
-	var apisrvAddr string
-	var nsNum int
-	var rcNum int
-	var podNum int
-	var freshCluster bool
-	var chaosEnabled bool
-	flag.StringVar(&apisrvAddr, "addr", "localhost:8080", "APIServer addr")
-	flag.IntVar(&nsNum, "ns", 100, "number of namespaces")
-	flag.IntVar(&rcNum, "rc", 10, "number of RC per namespace")
-	flag.IntVar(&podNum, "pod", 100, "number of pods per RC")
-	flag.BoolVar(&freshCluster, "fresh", true, "fresh cluster? We will create pods if so.")
-	flag.BoolVar(&chaosEnabled, "chaos", true, "running chaos testing only")
-	flag.BoolVar(&podMarkerEnabled, "markpod", false, "Marking pod")
-	flag.Parse()
-
 	c, err := createClient(apisrvAddr)
 	if err != nil {
 		ExitError("createClient failed: %v", err)
@@ -91,25 +92,18 @@ func main() {
 }
 
 func createPods(c *client.Client, nsNum, rcNum, podNum int) {
-	var wg sync.WaitGroup
-	wg.Add(nsNum * rcNum)
 	for i := 0; i < nsNum; i++ {
 		for j := 0; j < rcNum; j++ {
-			// TODO: clean up on failure
-			go func(nsID, rcID int) {
-				defer wg.Done()
-				createRC(c, nsID, rcID, podNum)
-				waitRCCreatePods(c, nsID, rcID, podNum)
-			}(i, j)
+			go createRC(c, i, j, podNum)
 		}
 	}
-	wg.Wait()
+	waitRCCreatePods(c, nsNum*rcNum*podNum)
 }
 
 func createRC(c *client.Client, nsID, rcID, podNum int) {
 	var args []string
-	if podMarkerEnabled {
-		args = []string{garbageStr}
+	if podMarkerSize != 0 {
+		args = []string{string(garbage)}
 	}
 	rc := &api.ReplicationController{
 		ObjectMeta: api.ObjectMeta{
@@ -140,9 +134,9 @@ func createRC(c *client.Client, nsID, rcID, podNum int) {
 	fmt.Printf("created rc (%s'%s)\n", makeNS(nsID), makeRCName(rcID))
 }
 
-func waitRCCreatePods(c *client.Client, nsID, rcID, podNum int) {
+func waitRCCreatePods(c *client.Client, podNum int) {
 	// Currently this is inefficient. It will watch all pods under the namespace.
-	informer := createPodInformer(c, nsID, rcID)
+	informer := createPodInformer(c)
 
 	doneCh := make(chan struct{})
 	total := 0
@@ -164,10 +158,10 @@ func waitRCCreatePods(c *client.Client, nsID, rcID, podNum int) {
 	for {
 		select {
 		case <-doneCh:
-			fmt.Printf("rc (%s/%s) created %d pods\n", makeNS(nsID), makeRCName(rcID), podNum)
+			fmt.Printf("created %d pods\n", podNum)
 			return
 		case <-time.After(1 * time.Minute):
-			fmt.Printf("After %v, rc (%s/%s) has created %d pods\n", time.Since(start), makeNS(nsID), makeRCName(rcID), len(store.List()))
+			fmt.Printf("After %v, created %d pods\n", time.Since(start), len(store.List()))
 		}
 	}
 }
@@ -195,17 +189,14 @@ func listPods(c *client.Client, nsID, rcID int) *api.PodList {
 	return podList
 }
 
-func createPodInformer(c *client.Client, nsID, rcID int) controllerframework.SharedInformer {
-	label := labels.SelectorFromSet(labels.Set(makeLabel(nsID, rcID)))
+func createPodInformer(c *client.Client) controllerframework.SharedInformer {
 	informer := controllerframework.NewSharedInformer(
 		&cache.ListWatch{
 			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
-				options.LabelSelector = label
-				return c.Pods(makeNS(nsID)).List(options)
+				return c.Pods(api.NamespaceAll).List(options)
 			},
 			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				options.LabelSelector = label
-				return c.Pods(makeNS(nsID)).Watch(options)
+				return c.Pods(api.NamespaceAll).Watch(options)
 			},
 		},
 		&api.Pod{},
