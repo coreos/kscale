@@ -116,36 +116,36 @@ func main() {
 }
 
 var (
-	omjson = []byte(`{  
+	omjson = []byte(`{
       "name":"scale-rc-9-zumj1",
       "generateName":"scale-rc-9-",
       "namespace":"scale-ns-1",
       "uid":"1a332dc8-341f-11e6-84a3-42010af0000e",
       "creationTimestamp":"2016-06-17T00:04:46Z",
-      "labels":{  
+      "labels":{
          "name":"scale-label-1-9"
       },
-      "annotations":{  
+      "annotations":{
          "kubernetes.io/created-by":"{\"kind\":\"SerializedReference\",\"apiVersion\":\"v1\",\"reference\":{\"kind\":\"ReplicationController\",\"namespace\":\"scale-ns-1\",\"name\":\"scale-rc-9\",\"uid\":\"e40ad334-341e-11e6-84a3-42010af0000e\",\"apiVersion\":\"v1\",\"resourceVersion\":\"379108\"}}\n"
       }
    }
    `)
 
-	omjsonnol = []byte(`{  
+	omjsonnol = []byte(`{
       "name":"scale-rc-9-zumj1",
       "generateName":"scale-rc-9-",
       "namespace":"scale-ns-1",
       "uid":"1a332dc8-341f-11e6-84a3-42010af0000e",
       "creationTimestamp":"2016-06-17T00:04:46Z",
-      "annotations":{  
+      "annotations":{
          "kubernetes.io/created-by":"{\"kind\":\"SerializedReference\",\"apiVersion\":\"v1\",\"reference\":{\"kind\":\"ReplicationController\",\"namespace\":\"scale-ns-1\",\"name\":\"scale-rc-9\",\"uid\":\"e40ad334-341e-11e6-84a3-42010af0000e\",\"apiVersion\":\"v1\",\"resourceVersion\":\"379108\"}}\n"
       }
    }
    `)
 
-	podspecjson = []byte(`{  
-      "containers":[  
-         {  
+	podspecjson = []byte(`{
+      "containers":[
+         {
             "name":"none",
             "image":"none",
             "resources":{},
@@ -160,7 +160,7 @@ var (
    }`)
 
 	statusjson = []byte(`{
-   	  "status":{  
+        "status":{
         "phase":"Pending"
       }
 	}`)
