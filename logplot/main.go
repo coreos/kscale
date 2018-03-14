@@ -124,11 +124,11 @@ func plotDensity(results []densityResult) {
 	}
 
 	// Save the plot to a SVG file.
-	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-all.svg"); err != nil {
+	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-all.png"); err != nil {
 		panic(err)
 	}
 
-	fmt.Println("successfully plotted density graph to density-all.svg")
+	fmt.Println("successfully plotted density graph to density-all.png")
 }
 
 func plotCreatingRateVsPods(rs []densityResult) {
@@ -147,11 +147,11 @@ func plotCreatingRateVsPods(rs []densityResult) {
 	}
 
 	// Save the plot to a SVG file.
-	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-creating-rate.svg"); err != nil {
+	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-creating-rate.png"); err != nil {
 		panic(err)
 	}
 
-	fmt.Println("successfully plotted density graph to density-creating-rate.svg")
+	fmt.Println("successfully plotted density graph to density-creating-rate.png")
 }
 
 func plotRunningRateVsPods(rs []densityResult) {
@@ -170,11 +170,11 @@ func plotRunningRateVsPods(rs []densityResult) {
 	}
 
 	// Save the plot to a SVG file.
-	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-running-rate.svg"); err != nil {
+	if err := p.Save(10*vg.Inch, 10*vg.Inch, "density-running-rate.png"); err != nil {
 		panic(err)
 	}
 
-	fmt.Println("successfully plotted density graph to density-running-rate.svg")
+	fmt.Println("successfully plotted density graph to density-running-rate.png")
 }
 
 func recordAvgRunningRate(rs []densityResult) {
